@@ -1,0 +1,19 @@
+# Snakemake
+.snakemake/
+results/
+logs/
+slurm_out/
+
+# Input data (large / not ours to redistribute)
+fastq/
+assembly/
+ref/
+reference/
+IS_db/
+panisa/
+
+# OS / editor
+.DS_Store
+._*
+.Rhistory
+__pycache__/

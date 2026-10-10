@@ -1,0 +1,78 @@
+# ISpy configuration (shared by ISpy.smk, update_db.smk and reblast.smk)
+
+# ---- General ----------------------------------------------------------------
+samples: config/samples.tsv            # tab-separated, column "sample_id"
+prefix: run1                           # results/<prefix>/, logs/<prefix>/
+threads: 8
+
+# ---- Reads ------------------------------------------------------------------
+input_reads: fastq                     # holds <sample>_R1.fastq.gz / <sample>_R2.fastq.gz
+trim: true                             # false = reads are already trimmed (ISScreener_pretrimmed)
+trimmed_reads: "fastq/trim/{sample}_R{read}_trim_paired.fastq.gz"   # used only when trim: false
+
+# Trimmomatic parameters (ISScreener defaults)
+trimmomatic:
+  adapter_file_path: config/adapters/combined_adapters.fa
+  seeds: 2
+  palindrome_clip_threshold: 30
+  simple_clip_threshold: 10
+  min_adapter_length: 8
+  keep_both_reads: true
+  window_size: 4
+  window_size_quality: 20
+  min_length: 40
+  head_crop_length: 0
+
+# ---- Reference --------------------------------------------------------------
+# FASTA used for bwa/panISa and its annotation. Contig names like
+# gi|661922017|gb|CP008827.1| are matched to CP008827.1 automatically.
+reference_genome: ref/KPNIH1_prokka/KPNIH1.fna
+reference_gff: ref/KPNIH1_prokka/KPNIH1.gff
+
+# Sample assemblies, input for ISEScan and the panISa rescue in update_db.smk
+assembly: "assembly/{sample}/{sample}.fna"
+
+panisa_args: ""                        # extra panISa.py options
+
+# ---- IS databases -----------------------------------------------------------
+# name -> FASTA. "auto" builds the database from combined_from with exact
+# duplicates (either strand) removed. To use an earlier updated database as a
+# base for another update, add it here (e.g. ISpy_db_v1: IS_db/ISpy_db_v1/ISpy_db_v1.fna).
+databases:
+  ISFinder: IS_db/ISFinder/IS.fna
+  ISOSDB: IS_db/ISOSDB/ISOSDB.V3.fna
+  combined: auto
+combined_from: [ISFinder, ISOSDB]      # priority order; earlier names win on duplicates
+
+blast_dbs: [ISFinder, ISOSDB]          # databases searched by ISpy.smk: ISFinder / ISOSDB / combined
+
+# scripts/local_db_blast.py options (panISa ISFinder_search.py defaults)
+local_blast:
+  length: 30                           # bp taken from each IS end
+  identity: 90                         # min % identity
+  evalue: 0.001
+  alignment: 80                        # min alignment length, % of length
+
+# ISOSDB id -> IS family (columns IS, IS_fam); used to label plots
+isosdb_family_annotation: IS_db/ISOSDB/IS_fam_annot.txt
+
+# ---- Genes near insertion sites (bedtools) -----------------------------------
+annotation:
+  method: window                       # window = all genes within distance; closest = n nearest genes
+  distance: 1000                       # bp, for method: window
+  n_closest: 3                         # for method: closest
+  feature_types: [CDS, tRNA, rRNA]     # GFF feature types treated as genes
+
+plot:
+  flank: 3000                          # bp shown either side of each insertion
+
+# ---- Database update (update_db.smk) and re-BLAST (reblast.smk) -------------
+update_db:
+  base: [ISFinder, ISOSDB]             # priority order; earlier names win on duplicates
+  name: ISpy_db_v1                     # new database: <outdir>/<name>.fna; the originals are not modified
+  outdir: IS_db/ISpy_db_v1
+  identity: 95                         # ISEScan element is known if a hit has >= identity ...
+  qcov: 90                             # ... and covers >= qcov % of it; otherwise it becomes IS_novel_*
+  cluster_id: 0.95                     # cd-hit-est clustering of ISEScan elements
+  cluster_cov: 0.9
+  panisa_rescue: true                  # also cut "No identity" panISa elements out of the assemblies

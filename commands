@@ -1,0 +1,112 @@
+# 1. trim raw sequencing reads using Trimmomatic
+mkdir -p ${fastq}/trim
+trimmomatic PE -threads 8 \
+  ${fastq}${S}_R1.fastq.gz ${fastq}${S}_R2.fastq.gz \
+  ${fastq}/trim/${S}_R1_paired.fq.gz ${fastq}/trim/${S}_R1_unpaired.fq.gz \
+  ${fastq}/trim/${S}_R2_paired.fq.gz ${fastq}/trim/${S}_R2_unpaired.fq.gz \
+  ILLUMINACLIP:${adapter_file_path}:2:30:10 SLIDINGWINDOW:4:15 MINLEN:50
+
+# 2 index the reference sequence
+  bwa index ${reference_genome}
+
+# 3 align trimmed reads to the reference genome and sort the alignments
+mkdir -p ${fastq}/align
+bash scripts/bwa.sh \
+  ${fastq}/trim/${S}_R1_trim_paired.fastq.gz \
+  ${fastq}/trim/${S}_R2_trim_paired.fastq.gz \
+  ${reference_genome} 8 \
+  ${fastq}/align/${S}_sorted_aln.bam \
+  ${fastq}/align/${S}_sorted_aln_temp \
+  ${fastq}/align/${S}_bwa.log
+
+
+# 4. Remove PCR duplicates
+picard MarkDuplicates \
+  -REMOVE_DUPLICATES true \
+  -INPUT ${fastq}/align/${S}_sorted_aln.bam \
+  -OUTPUT ${fastq}/align/${S}_aln_marked.bam \
+  -METRICS_FILE ${fastq}/align/${S}_picard_metrics.txt \
+  -CREATE_INDEX false \
+  -VALIDATION_STRINGENCY LENIENT
+
+# 5. Sort, index, and generate alignment statistics for the final BAM file
+samtools sort -@ 8 -o ${fastq}/align/${S}_final.bam ${fastq}/align/${S}_aln_marked.bam
+samtools index ${fastq}/align/${S}_final.bam
+samtools flagstat ${fastq}/align/${S}_final.bam
+
+# 6. Run panisa (finally)
+mkdir -p panisa
+panISa.py ${fastq}/align/${S}_final.bam -o panisa/${S}_panISa.txt
+head -3 panisa/${S}_panISa.txt
+
+# 7. Create fasta of the IS
+mkdir -p blast
+awk -F'\t' 'NR>1 {
+  l=$8; r=$9
+  gsub(/^N+|N+$/, "", l); gsub(/^N+|N+$/, "", r)
+  print ">" $1 "_" $5 "-" $2 "_left\n" l
+  print ">" $1 "_" $5 "-" $2 "_right\n" r
+}' panisa/${S}_panISa.txt > blast/${S}_is_ends.fasta
+
+# 8. Blast against databases
+# Run ISFinder and ISODB using this python script
+# index database
+cd IS_db/ISFinder
+makeblastdb -in IS_db/ISFinder/IS.fna -dbtype nucl
+
+# ISFinder copy (IS.fna)
+python ISFinder_local.py -d IS_db/ISFinder/IS.fna -r _panISa.txt \
+  -o panisa/${S}_ISfinder.tsv panisa/${S}_panISa.txt
+
+# ISOSDB
+# index ISOSDB database
+cd IS_db/ISOSDB
+makeblastdb -in ISOSDB.V3.fna -dbtype nucl
+
+# blast against the indexed database
+python ISFinder_local.py -d IS_db/ISOSDB/ISOSDB.V3.fna -r _panISa.txt \
+  -o panisa/${S}_ISOSDB.tsv panisa/${S}_panISa.txt
+
+# annotate the fasta file
+sed 's/^>.*/>CP008827.1/' ref/KPNIH1.fasta > ref/KPNIH1_renamed.fasta
+prokka --outdir ref/KPNIH1_prokka --prefix KPNIH1 --kingdom Bacteria --force ref/KPNIH1_renamed.fasta
+
+
+# 9. 
+## Find the position where IS were inserted
+tail -n +2 panisa/${S}_panISa.txt | cut -f1 | sort -u
+awk '/^##FASTA/{exit} !/^#/{print $1}' ${gff} | sort -u
+
+# 10. make a BED file of insertion sites
+mkdir -p genes
+awk -F'\t' 'NR>1 {
+  s=($5<$2)?$5:$2; e=($5<$2)?$2:$5
+  print $1 "\t" s-1 "\t" e "\tsite" NR-1
+}' panisa/${S}_panISa.txt | sort -k1,1 -k2,2n > genes/${S}_sites.bed
+
+# 11. Get nearest 3 insertion sequences
+
+# 13. nearest gene to each insertion sites less than 2000bp apart
+bedtools window -a is_sites.bed -b features.sorted.gff -w 2000 > window.tsv
+
+# 14. summary statistics
+awk -F'\t' 'BEGIN{OFS="\t"; print "site","contig","start","end","gene_start","gene_end","strand","distance","ID","product","category"}
+{
+  id="."; prod=".";
+  if (match($13,/ID=[^;]+/)) id=substr($13,RSTART+3,RLENGTH-3);
+  if (match($13,/product=[^;]+/)) prod=substr($13,RSTART+8,RLENGTH-8);
+  d=$14
+  if (d==0) c="inside_gene"
+  else if (d<0 && d>=-300) c="upstream_300bp"
+  else if (d>0 && d<=300) c="downstream_300bp"
+  else c="intergenic_far"
+  print $4,$1,$2,$3,$8,$9,$11,d,id,prod,c
+}' genes/${S}_sites_nearest_gene.txt > genes/${S}_sites_annotated.tsv
+
+column -t genes/${S}_sites_annotated.tsv | less -S
+
+
+
+
+## extract the IS elements
+isescan.py --seqfile assembly/${S}/${S}.fna --output isescan_sample --nthread 8

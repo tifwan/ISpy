@@ -1,0 +1,33 @@
+#!/bin/sh
+#SBATCH --job-name=ISpy
+#SBATCH --mail-user=YOUR_UNIQNAME@umich.edu
+#SBATCH --mail-type=BEGIN,FAIL,END,REQUEUE
+#SBATCH --export=ALL
+#SBATCH --partition=standard
+#SBATCH --account=esnitkin1
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=1 --mem=40g --time=24:00:00
+
+## Note: change the mail-user, account and SBATCH mem/time requirements as you see fit.
+## Runs the three ISpy workflows in order; each stops the script if it fails.
+## Comment out update_db/reblast to only search the existing databases.
+
+set -e
+
+# load modules
+module load snakemake
+module load mamba
+
+SMK_OPTS="--use-conda --conda-frontend mamba -j 999 --latency-wait 60 \
+  --cluster-config config/cluster.json --configfile config/config.yaml \
+  --cluster 'sbatch -A {cluster.account} -p {cluster.partition} -N {cluster.nodes} -t {cluster.walltime} -c {cluster.procs} --mem-per-cpu {cluster.pmem} --output=slurm_out/slurm-%j.out'"
+
+mkdir -p slurm_out
+
+# 1. panISa + BLAST against the existing databases, ISEScan on the assemblies
+eval snakemake -s ISpy.smk $SMK_OPTS
+
+# 2. build the updated database (ISFinder + ISOSDB + ISEScan, IS_novel_* for new elements)
+eval snakemake -s update_db.smk $SMK_OPTS
+
+# 3. re-BLAST against the updated database
+eval snakemake -s reblast.smk $SMK_OPTS

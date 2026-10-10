@@ -1,0 +1,10 @@
+name: ispy_preprocess
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - trimmomatic
+  - bwa
+  - samtools
+  - picard

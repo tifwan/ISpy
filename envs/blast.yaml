@@ -1,0 +1,10 @@
+name: ispy_blast
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.10
+  - blast
+  - cd-hit
+  - bedtools

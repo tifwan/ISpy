@@ -1,0 +1,21 @@
+name: panisa
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pysam
+  - requests
+  - emboss
+  - bedtools
+  - bwa
+  - samtools
+  - trimmomatic
+  - picard
+  - fastqc
+  - blast
+  - pip
+  - pip:
+      - panisa
+
