@@ -83,6 +83,22 @@ def run(cmd):
     subprocess.run(cmd, check=True)
 
 
+def makeblastdb(fasta, out):
+    """makeblastdb in a temp dir, then move the files next to `out`.
+
+    makeblastdb re-opens the new database by absolute path and fails if that
+    path contains spaces (e.g. a Dropbox folder); see scripts/makeblastdb.sh.
+    """
+    tmp = tempfile.mkdtemp(prefix="blastdb_")
+    name = os.path.basename(out)
+    try:
+        run(["makeblastdb", "-in", fasta, "-dbtype", "nucl", "-out", os.path.join(tmp, name)])
+        for f in os.listdir(tmp):
+            shutil.move(os.path.join(tmp, f), os.path.join(os.path.dirname(out) or ".", f))
+    finally:
+        shutil.rmtree(tmp)
+
+
 def combine_refs(paths, dup_log):
     """Return list of (id, description, seq) with exact dups removed."""
     seen_seq = {}          # canonical seq -> kept id
@@ -276,7 +292,7 @@ def main():
             iss[qid] = seq
             orig[qid] = header
             src[qid] = path
-    run(["makeblastdb", "-in", ref_fna, "-dbtype", "nucl", "-out", os.path.join(tmp, "refs")])
+    makeblastdb(ref_fna, os.path.join(tmp, "refs"))
     if a.panisa:
         rescued = rescue_from_panisa(a, tmp, out(".panisa_rescue.tsv"), os.path.join(tmp, "refs"))
         print("panISa rescue: %d elements extracted from assemblies" % len(rescued), file=sys.stderr)
@@ -343,6 +359,7 @@ def main():
                 rep_name[q] = (f[1], call, f[2], f[10])
             else:
                 fam = orig[q].split()[1].rsplit("_", 1)[0] if len(orig[q].split()) > 1 else "unknown"
+                fam = re.sub(r"[^\w.-]", "-", fam)   # IS200/IS605 -> IS200-IS605, safe as a seq ID
                 new = "IS_novel_%04d_%s" % (n_next, fam)
                 n_next += 1
                 call = "novel"
@@ -364,7 +381,7 @@ def main():
             write_fasta(fh, (sid + " " + desc).strip(), seq)
         for new, q in novel:
             write_fasta(fh, "%s %s" % (new, orig[q]), iss[q])
-    run(["makeblastdb", "-in", out(".fna"), "-dbtype", "nucl", "-out", out(".fna")])
+    makeblastdb(out(".fna"), out(".fna"))
 
     # renamed copy of each ISEScan FASTA, in --renamed-dir or next to the original
     if a.renamed_dir:

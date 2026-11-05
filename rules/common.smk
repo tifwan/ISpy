@@ -6,6 +6,12 @@ import re
 import sys
 import pandas as pd
 
+# conda activation puts a rule's env where the base env sits in PATH, which can
+# be behind /opt/homebrew/bin or /usr/local/bin; tools there (python3, Rscript)
+# would then shadow the env's own. Put the active env first for every rule
+# (braces doubled: snakemake formats the prefix).
+shell.prefix('set -euo pipefail; export PATH="${{CONDA_PREFIX:+$CONDA_PREFIX/bin:}}$PATH"; ')
+
 PREFIX = config["prefix"]
 RES = f"results/{PREFIX}"
 LOGS = f"logs/{PREFIX}"
@@ -15,6 +21,41 @@ SCRIPTS = os.path.relpath(os.path.join(workflow.basedir, "scripts"))
 SAMPLES = list(pd.read_csv(config["samples"], sep="\t")["sample_id"].astype(str))
 REF = config["reference_genome"]
 THREADS = config.get("threads", 8)
+
+
+# ---- reference FASTA vs GFF contig names --------------------------------------
+# Insertion sites carry the FASTA contig names, genes the GFF ones; if they never
+# match, every site silently comes out with no gene. Same normalization as
+# gff_to_bed.py / make_sites_bed.py (gi|661922017|gb|CP008827.1| -> CP008827.1).
+def norm_seqid(seqid):
+    parts = [p for p in seqid.split("|") if p]
+    return parts[-1] if parts else seqid
+
+
+def fasta_contigs(path):
+    with open(path) as fh:
+        return {norm_seqid(line[1:].split()[0]) for line in fh if line.startswith(">")}
+
+
+def gff_contigs(path):
+    contigs = set()
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith("##FASTA"):
+                break
+            if line.startswith("#") or not line.strip():
+                continue
+            contigs.add(norm_seqid(line.split("\t", 1)[0]))
+    return contigs
+
+
+if os.path.isfile(REF) and os.path.isfile(config["reference_gff"]):
+    _fa, _gff = fasta_contigs(REF), gff_contigs(config["reference_gff"])
+    if not _fa & _gff:
+        raise ValueError(
+            f"No contig names shared between reference_genome ({REF}: {', '.join(sorted(_fa)[:5])}) "
+            f"and reference_gff ({config['reference_gff']}: {', '.join(sorted(_gff)[:5])}). "
+            "Rename the FASTA headers to match the GFF, otherwise no insertion can be linked to a gene.")
 
 # ---- IS databases ---------------------------------------------------------
 # name -> FASTA. "auto" for combined = built from config["combined_from"]

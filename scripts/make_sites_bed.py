@@ -8,8 +8,8 @@ gff_to_bed.py. Output is unsorted; pipe through `LC_ALL=C sort -k1,1 -k2,2n`.
 
   python make_sites_bed.py sample_ISFinder.tsv > sample_sites.bed
 """
+import argparse
 import csv
-import sys
 
 
 def norm_seqid(seqid):
@@ -18,9 +18,10 @@ def norm_seqid(seqid):
 
 
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("usage: make_sites_bed.py <local_db_blast table>")
-    with open(sys.argv[1]) as fh:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("table", help="local_db_blast.py output table")
+    a = p.parse_args()
+    with open(a.table) as fh:
         for r in csv.DictReader(fh, delimiter="\t", quoting=csv.QUOTE_NONE):
             a, b = int(r["Start_Position"]), int(r["Stop_Position"])
             start, end = min(a, b), max(a, b)

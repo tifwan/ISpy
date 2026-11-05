@@ -35,7 +35,7 @@ rule make_blastdb:
     conda:
         "../envs/blast.yaml"
     shell:
-        "makeblastdb -in {input.fna} -dbtype nucl -out {params.prefix} &> {log}"
+        'bash "{SCRIPTS}/makeblastdb.sh" {input.fna} {params.prefix} &> {log}'
 
 
 rule local_db_blast:

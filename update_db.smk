@@ -39,7 +39,7 @@ rule update_db:
         outdir = UPDATE["outdir"],
         name = NEW_DB,
         panisa = lambda wildcards, input: ("--panisa " + " ".join(input.panisa)) if RESCUE else "",
-        assembly = config["assembly"],
+        assembly = lambda wildcards: config["assembly"],   # keeps "{sample}" for the script
         identity = UPDATE["identity"],
         qcov = UPDATE["qcov"],
         cluster_id = UPDATE["cluster_id"],

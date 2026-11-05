@@ -7,8 +7,8 @@ threads: 8
 
 # ---- Reads ------------------------------------------------------------------
 input_reads: fastq                     # holds <sample>_R1.fastq.gz / <sample>_R2.fastq.gz
-trim: true                             # false = reads are already trimmed (ISScreener_pretrimmed)
-trimmed_reads: "fastq/trim/{sample}_R{read}_trim_paired.fastq.gz"   # used only when trim: false
+trim: false                            # false = reads are already trimmed (ISScreener_pretrimmed)
+trimmed_reads: "fastq/{sample}_R{read}_trim_paired.fastq.gz"        # used only when trim: false
 
 # Trimmomatic parameters (ISScreener defaults)
 trimmomatic:
@@ -26,8 +26,8 @@ trimmomatic:
 # ---- Reference --------------------------------------------------------------
 # FASTA used for bwa/panISa and its annotation. Contig names like
 # gi|661922017|gb|CP008827.1| are matched to CP008827.1 automatically.
-reference_genome: ref/KPNIH1_prokka/KPNIH1.fna
-reference_gff: ref/KPNIH1_prokka/KPNIH1.gff
+reference_genome: reference/KPNIH1.fna
+reference_gff: reference/KPNIH1.gff
 
 # Sample assemblies, input for ISEScan and the panISa rescue in update_db.smk
 assembly: "assembly/{sample}/{sample}.fna"
